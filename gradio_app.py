@@ -10,6 +10,8 @@ from PIL import Image
 
 from tqdm.auto import tqdm
 from datetime import datetime
+from dotenv import load_dotenv
+
 
 import diffusers
 from diffusers import DDIMScheduler
@@ -74,7 +76,8 @@ text_cond = 0
 device="cuda"
 MAX_COLORS = 12
 
-HF_TOKEN = ''
+load_dotenv()
+HF_TOKEN = os.getenv("HF_TOKEN")
 
 pipe = diffusers.StableDiffusionPipeline.from_pretrained(
         "runwayml/stable-diffusion-v1-5",
@@ -350,5 +353,5 @@ with gr.Blocks(css=css) as demo:
     
     demo.load(None, None, None, _js=load_js)
     
-demo.launch(server_name="0.0.0.0")
+demo.launch(server_name="0.0.0.0", share=True)
 

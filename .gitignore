@@ -1,0 +1,12 @@
+# Python artifacts
+__pycache__/
+*.pyc
+
+# Environment files
+.env
+
+# Other common ignores
+.vscode/
+venv/
+
+*.lock

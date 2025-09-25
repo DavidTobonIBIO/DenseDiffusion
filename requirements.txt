@@ -1,4 +1,7 @@
+gradio==3.43.2
 diffusers==0.20.2
 transformers==4.28.0
-gradio==3.43.2
-accelerate
+accelerate==0.23.0
+python-dotenv==1.0.1
+numpy<2.0
+huggingface-hub<0.20.0

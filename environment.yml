@@ -1,0 +1,29 @@
+name: dense_diffusion_env
+channels:
+  - pytorch
+  - nvidia
+  - defaults
+dependencies:
+  # --- Conda Packages ---
+  # Specify the Python version and the hardware-compatible PyTorch build
+  - python=3.10
+  - pytorch=1.13.1
+  - torchvision=0.14.1
+  - torchaudio=0.13.1
+  - pytorch-cuda=11.7
+
+  # --- Pip Packages ---
+  # The application-level dependencies are installed via pip
+  - pip:
+    # Core application libraries with pinned versions
+    - gradio==3.43.2
+    - diffusers==0.20.2
+    - transformers==4.28.0
+    - accelerate==0.23.0
+
+    # Library for loading the .env file
+    - python-dotenv==1.0.1
+
+    # Pinned dependencies for version compatibility
+    - numpy<2.0
+    - huggingface-hub<0.20.0
