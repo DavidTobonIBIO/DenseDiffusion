@@ -4,11 +4,10 @@ This script performs automated experiments on the DenseDiffusion model to analyz
 
 ## Overview
 
-The experiment generates images using validation dataset samples (images 1.png and 5.png) with different hyperparameter configurations:
+The experiment generates images using validation and test dataset samples with different hyperparameter configurations:
 
 - **Base generation**: Uses default hyperparameters from the Gradio app
-- **Parameter variations**: Tests 2 different values for each of the 3 key hyperparameters
-- **Total generations**: 8 images per input (1 base + 7 variations)
+- **Parameter variations**: Tests different values for each of the 3 key hyperparameters
 
 ## Hyperparameters Tested
 
@@ -42,8 +41,8 @@ The experiment generates images using validation dataset samples (images 1.png a
    - Ensure you have CUDA available for GPU acceleration
 
 3. **Dataset**:
-   - Ensure the validation dataset is available at `./dataset/valset.pkl`
-   - Ensure layout images are available at `./dataset/valset_layout/`
+   - Ensure the validation dataset is available at `./dataset/valset.pkl`, and the test dataset at `./dataset/testset.pkl`
+   - Ensure layout images are available at `./dataset/valset_layout/` and `./dataset/testset_layout/`
 
 ## Usage
 
@@ -56,7 +55,7 @@ python automated_experiments.py
 ```
 
 The script will:
-1. Load validation samples for images 1 and 5
+1. Load validation and test samples for images
 2. Generate images with base hyperparameters
 3. Generate variations for each hyperparameter
 4. Create matplotlib visualizations showing all results

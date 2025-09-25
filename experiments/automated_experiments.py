@@ -6,6 +6,7 @@ import sys
 import matplotlib.pyplot as plt
 from datetime import datetime
 from dotenv import load_dotenv
+from PIL import Image
 
 import diffusers
 from diffusers import DDIMScheduler
@@ -50,10 +51,14 @@ pipe.scheduler.set_timesteps(50)
 timesteps = pipe.scheduler.timesteps
 sp_sz = pipe.unet.sample_size
 
-# Load validation dataset
+# Load validation and test datasets
 with open('../dataset/valset.pkl', 'rb') as f:
     val_prompt = pickle.load(f)
 val_layout = '../dataset/valset_layout/'
+
+with open('../dataset/testset.pkl', 'rb') as f:
+    test_prompt = pickle.load(f)
+test_layout = '../dataset/testset_layout/'
 
 # Modified forward function (same as in gradio_app.py)
 def mod_forward(self, hidden_states, encoder_hidden_states=None, attention_mask=None, temb=None):
@@ -231,14 +236,20 @@ def process_generation(binary_matrixes, seed, creg_, sreg_, sizereg_, bsz, maste
 
     return image
 
-def load_example_data(image_idx):
-    """Load example data for a given image index"""
-    layout_path = val_layout + f'{image_idx}.png'
-    all_prompts = '***'.join([val_prompt[image_idx]['textual_condition']] + val_prompt[image_idx]['segment_descriptions'])
+def load_example_data(image_idx, dataset_type='val'):
+    """Load example data for a given image index from validation or test set"""
+    if dataset_type == 'val':
+        layout_path = val_layout + f'{image_idx}.png'
+        prompt_data = val_prompt[image_idx]
+        # Use seeds from gradio_app.py examples
+        seeds = {0: 381940206, 1: 307504592, 5: 114972190}
+        seed = seeds.get(image_idx, 42 + image_idx)
+    else:  # test
+        layout_path = test_layout + f'{image_idx}.png'
+        prompt_data = test_prompt[image_idx]
+        seed = 42 + image_idx  # Generate consistent seeds for test set
     
-    # Use the seed from the examples in gradio_app.py
-    seeds = {1: 307504592, 5: 114972190}
-    seed = seeds.get(image_idx, 42)
+    all_prompts = '***'.join([prompt_data['textual_condition']] + prompt_data['segment_descriptions'])
     
     # Process the example to get binary matrices and prompts
     result = process_example(layout_path, all_prompts, seed)
@@ -246,30 +257,42 @@ def load_example_data(image_idx):
     # Extract the relevant data
     binary_matrixes = result[1]
     prompts = result[2+24:2+24+12]  # Extract prompts from the result
-    general_prompt = result[-2].value if hasattr(result[-2], 'value') else val_prompt[image_idx]['textual_condition']
+    general_prompt = result[-2].value if hasattr(result[-2], 'value') else prompt_data['textual_condition']
     
-    return binary_matrixes, prompts, general_prompt, seed
+    return binary_matrixes, prompts, general_prompt, seed, layout_path
 
 def run_experiments():
-    """Run automated experiments for images 1 and 5"""
+    """Run automated experiments for all validation and test images"""
     
     # Define hyperparameter variations
     base_params = {'creg': 1.0, 'sreg': 0.3, 'sizereg': 1.0}
     
-    # Define variations for each parameter (2 variations each)
+    # Define variations for each parameter
     param_variations = {
         'creg': [0.5, 1.5],      # w^c variations
         'sreg': [0.1, 0.6, 1.2],      # w^s variations  
-        'sizereg': [0.5, 0.8]    # mask-area adaptive adjustment variations
+        'sizereg': [0.2, 0.5, 0.8]    # mask-area adaptive adjustment variations
     }
     
-    image_indices = [1, 5]
+    # Process all validation images
+    print("=== Processing Validation Dataset ===")
+    val_indices = list(range(len(val_prompt)))
+    for img_idx in val_indices:
+        print(f"\n--- Processing Validation Image {img_idx} ---")
+        process_single_image(img_idx, 'val', base_params, param_variations)
     
-    for img_idx in image_indices:
-        print(f"\n=== Processing Image {img_idx} ===")
-        
+    # Process all test images
+    print("\n=== Processing Test Dataset ===")
+    test_indices = list(range(len(test_prompt)))
+    for img_idx in test_indices:
+        print(f"\n--- Processing Test Image {img_idx} ---")
+        process_single_image(img_idx, 'test', base_params, param_variations)
+
+def process_single_image(img_idx, dataset_type, base_params, param_variations):
+    """Process a single image with all parameter variations"""
+    try:
         # Load example data
-        binary_matrixes, prompts, general_prompt, seed = load_example_data(img_idx)
+        binary_matrixes, prompts, general_prompt, seed, layout_path = load_example_data(img_idx, dataset_type)
         
         # Filter out empty prompts
         valid_prompts = [p.value if hasattr(p, 'value') else str(p) for p in prompts if p is not None]
@@ -280,7 +303,17 @@ def run_experiments():
         
         # Store all generated images and their parameters
         all_images = []
-        all_params = []
+        all_param_info = []
+        
+        # Add layout image as first image
+        if os.path.exists(layout_path):
+            layout_img = Image.open(layout_path)
+            all_images.append(layout_img)
+            all_param_info.append({
+                'params': {},
+                'changed_param': None,
+                'is_layout': True
+            })
         
         # 1. Generate with base parameters
         print("Generating with base parameters...")
@@ -292,7 +325,11 @@ def run_experiments():
         
         if base_images:
             all_images.append(base_images[0])
-            all_params.append(f"Base: w^c={base_params['creg']}, w^s={base_params['sreg']}, sizereg={base_params['sizereg']}")
+            all_param_info.append({
+                'params': base_params.copy(),
+                'changed_param': None,
+                'is_base': True
+            })
         
         # 2. Generate variations for each parameter
         for param_name, variations in param_variations.items():
@@ -311,23 +348,39 @@ def run_experiments():
                 
                 if var_images:
                     all_images.append(var_images[0])
-                    all_params.append(f"{param_name}={variation}: w^c={params['creg']}, w^s={params['sreg']}, sizereg={params['sizereg']}")
+                    all_param_info.append({
+                        'params': params,
+                        'changed_param': param_name,
+                        'is_base': False
+                    })
         
-        # 3. Create visualization
+        # 3. Create simple visualization
         if all_images:
-            create_visualization(all_images, all_params, img_idx)
+            create_simple_visualization(
+                all_images, all_param_info, img_idx, dataset_type,
+                general_prompt, base_params
+            )
         
-        print(f"Completed experiments for image {img_idx}")
+        print(f"Completed experiments for {dataset_type} image {img_idx}")
+        
+    except Exception as e:
+        print(f"Error processing {dataset_type} image {img_idx}: {str(e)}")
+        print("Continuing with next image...")
 
-def create_visualization(images, param_labels, img_idx):
-    """Create matplotlib visualization with subplots"""
+def create_simple_visualization(images, param_info, img_idx, dataset_type, 
+                              general_prompt, base_params):
+    """Create simple matplotlib visualization with proper bold formatting"""
     
     n_images = len(images)
     cols = 4
-    rows = 2  # Ceiling division
+    rows = (n_images + cols - 1) // cols  # Ceiling division
     
-    fig, axes = plt.subplots(rows, cols, figsize=(20, 5*rows))
-    fig.suptitle(f'DenseDiffusion Experiments - Image {img_idx}', fontsize=16, fontweight='bold')
+    # Create figure
+    fig, axes = plt.subplots(rows, cols, figsize=(16, 4*rows))
+    
+    # Main title with prompt
+    fig.suptitle(f'{dataset_type.capitalize()} Image {img_idx}: {general_prompt}', 
+                fontsize=14, fontweight='bold', y=0.98)
     
     # Flatten axes for easier indexing
     if rows == 1:
@@ -335,10 +388,35 @@ def create_visualization(images, param_labels, img_idx):
     else:
         axes = axes.flatten()
     
-    for i, (img, label) in enumerate(zip(images, param_labels)):
+    # Display images
+    for i, (img, info) in enumerate(zip(images, param_info)):
         ax = axes[i]
         ax.imshow(img)
-        ax.set_title(label, fontsize=10, wrap=True)
+        
+        # Format title with proper bold formatting
+        if info.get('is_layout', False):
+            ax.set_title("Input Layout", fontsize=12, fontweight='bold')
+        elif info.get('is_base', False):
+            title = f"BASE: wc={info['params']['creg']}, ws={info['params']['sreg']}, sizereg={info['params']['sizereg']}"
+            ax.set_title(title, fontsize=10, fontweight='bold')
+        else:
+            # Create title with bold formatting for changed parameter
+            param_names = {'creg': 'wc', 'sreg': 'ws', 'sizereg': 'sizereg'}
+            changed_param = info['changed_param']
+            
+            title_parts = []
+            for param, value in info['params'].items():
+                param_display = param_names.get(param, param)
+                title_parts.append(f"{param_display}={value}")
+            
+            title = ", ".join(title_parts)
+            
+            # Use different colors for different changed parameters
+            colors = {'creg': 'red', 'sreg': 'blue', 'sizereg': 'green'}
+            color = colors.get(changed_param, 'black')
+            
+            ax.set_title(title, fontsize=10, color=color, fontweight='bold')
+        
         ax.axis('off')
     
     # Hide unused subplots
@@ -348,16 +426,20 @@ def create_visualization(images, param_labels, img_idx):
     plt.tight_layout()
     
     # Save the figure
+    results_dir = "results"
+    os.makedirs(results_dir, exist_ok=True)
+    os.makedirs(f"{results_dir}/{dataset_type}", exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f'densediffusion_experiments_image_{img_idx}_{timestamp}.png'
-    plt.savefig(filename, dpi=300, bbox_inches='tight')
-    print(f"Visualization saved as: {filename}")
+    filename = f'image_{img_idx}_{timestamp}.png'
+    filepath = os.path.join(results_dir, dataset_type, filename)
+    plt.savefig(filepath, dpi=300, bbox_inches='tight')
+    print(f"Visualization saved as: {filepath}")
     
-    plt.show()
+    plt.close()
 
 if __name__ == "__main__":
     print("Starting DenseDiffusion automated experiments...")
-    print("This will generate images with different hyperparameter settings for validation images 1 and 5")
+    print("This will generate images with different hyperparameter settings for all validation and test images")
     
     run_experiments()
     
