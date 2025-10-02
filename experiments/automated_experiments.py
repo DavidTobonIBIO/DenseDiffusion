@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 from dotenv import load_dotenv
 from PIL import Image
+import argparse
 
 import diffusers
 from diffusers import DDIMScheduler
@@ -198,7 +199,14 @@ def process_generation(binary_matrixes, seed, creg_, sreg_, sizereg_, bsz, maste
     ###########################
     pww_maps = torch.zeros(1,77,sp_sz,sp_sz).to(device)
     for i in range(1,len(prompts)):
+        # Skip empty prompts
+        if not prompts[i] or prompts[i].strip() == '':
+            continue
+            
         wlen = text_input['length'][i] - 2
+        if wlen <= 0:
+            continue
+            
         widx = text_input['input_ids'][i][1:1+wlen]
         for j in range(77):
             try:
@@ -207,8 +215,7 @@ def process_generation(binary_matrixes, seed, creg_, sreg_, sizereg_, bsz, maste
                     cond_embeddings[0][j:j+wlen] = cond_embeddings[i][1:1+wlen]
                     break
             except:
-                print("Error: Please check whether every segment prompt is included in the full text!")
-                return None
+                continue
     
     global creg_maps
     creg_maps = {}
@@ -261,8 +268,8 @@ def load_example_data(image_idx, dataset_type='val'):
     
     return binary_matrixes, prompts, general_prompt, seed, layout_path
 
-def run_experiments():
-    """Run automated experiments for all validation and test images"""
+def run_experiments(datasets=['val', 'test']):
+    """Run automated experiments for specified datasets"""
     
     # Define hyperparameter variations
     base_params = {'creg': 1.0, 'sreg': 0.3, 'sizereg': 1.0}
@@ -274,19 +281,21 @@ def run_experiments():
         'sizereg': [0.2, 0.5, 0.8]    # mask-area adaptive adjustment variations
     }
     
-    # Process all validation images
-    print("=== Processing Validation Dataset ===")
-    val_indices = list(range(len(val_prompt)))
-    for img_idx in val_indices:
-        print(f"\n--- Processing Validation Image {img_idx} ---")
-        process_single_image(img_idx, 'val', base_params, param_variations)
+    # Process validation images if requested
+    if 'val' in datasets:
+        print("=== Processing Validation Dataset ===")
+        val_indices = list(range(len(val_prompt)))
+        for img_idx in val_indices:
+            print(f"\n--- Processing Validation Image {img_idx} ---")
+            process_single_image(img_idx, 'val', base_params, param_variations)
     
-    # Process all test images
-    print("\n=== Processing Test Dataset ===")
-    test_indices = list(range(len(test_prompt)))
-    for img_idx in test_indices:
-        print(f"\n--- Processing Test Image {img_idx} ---")
-        process_single_image(img_idx, 'test', base_params, param_variations)
+    # Process test images if requested
+    if 'test' in datasets:
+        print("\n=== Processing Test Dataset ===")
+        test_indices = list(range(len(test_prompt)))
+        for img_idx in test_indices:
+            print(f"\n--- Processing Test Image {img_idx} ---")
+            process_single_image(img_idx, 'test', base_params, param_variations)
 
 def process_single_image(img_idx, dataset_type, base_params, param_variations):
     """Process a single image with all parameter variations"""
@@ -438,9 +447,22 @@ def create_simple_visualization(images, param_info, img_idx, dataset_type,
     plt.close()
 
 if __name__ == "__main__":
-    print("Starting DenseDiffusion automated experiments...")
-    print("This will generate images with different hyperparameter settings for all validation and test images")
+    parser = argparse.ArgumentParser(description='DenseDiffusion automated experiments')
+    parser.add_argument('--datasets', nargs='+', choices=['val', 'test', 'both'], 
+                       default=['both'], 
+                       help='Which datasets to process: val, test, or both (default: both)')
     
-    run_experiments()
+    args = parser.parse_args()
+    
+    # Handle 'both' option
+    if 'both' in args.datasets:
+        datasets_to_process = ['val', 'test']
+    else:
+        datasets_to_process = args.datasets
+    
+    print("Starting DenseDiffusion automated experiments...")
+    print(f"Processing datasets: {', '.join(datasets_to_process)}")
+    
+    run_experiments(datasets_to_process)
     
     print("\nExperiments completed!")

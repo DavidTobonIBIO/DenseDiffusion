@@ -43,3 +43,11 @@ print("\nSample 5 (index 5):")
 print(f"Textual condition: {test_prompt[5]['textual_condition']}")
 print(f"Segment descriptions: {test_prompt[5]['segment_descriptions']}")
 
+with open('../dataset/testset_instances.pkl', 'rb') as f:
+    test_prompt = pickle.load(f)
+
+print("Test dataset structure:")
+print("Keys:", test_prompt.keys())
+print(f"Number of samples: {len(test_prompt)}")
+print("Sample keys:", test_prompt[1].keys())
+
